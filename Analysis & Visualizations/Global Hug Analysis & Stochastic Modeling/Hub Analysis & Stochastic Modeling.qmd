@@ -15,6 +15,7 @@ execute:
 ```{r}
 #| label: setup-libraries
 #| include: false
+# Following the Tidyverse Style Guide: https://style.tidyverse.org/
 library(tidyverse)
 library(rvest)
 library(gt)
