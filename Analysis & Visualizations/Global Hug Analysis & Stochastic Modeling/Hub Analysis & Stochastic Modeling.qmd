@@ -89,6 +89,7 @@ The visualization in Figure 1 underscores the "steepness" of recovery for differ
 ```{r}
 #| label: fig-airport-plot
 #| fig-cap: "Recovery trajectories of global airport hubs (2020-2025)"
+#| fig-alt: "Line plot showing passenger traffic recovery from 2020 to 2025 for six major global airports, with ATL leading and DXB showing the steepest growth."
 plot_data <- busiest_airports_tidy |>
   mutate(Passengers_M = Passengers / 1e6, Year = as.numeric(Year))
 
@@ -166,6 +167,7 @@ make_mc_plot <- function(n_val) {
 #| label: fig-mc-a
 #| fig-cap: "Resolution: n=10"
 #| fig-height: 2.5
+#| fig-alt: "Monte Carlo simulation with n=10 points showing a sparse estimate of the Weibull PDF area."
 make_mc_plot(10)
 ```
 
@@ -173,6 +175,7 @@ make_mc_plot(10)
 #| label: fig-mc-b
 #| fig-cap: "Resolution: n=100"
 #| fig-height: 2.5
+#| fig-alt: "Monte Carlo simulation with n=100 points showing an improving estimate of the Weibull PDF area."
 make_mc_plot(100)
 ```
 :::
@@ -184,6 +187,7 @@ make_mc_plot(100)
 #| label: fig-mc-c
 #| fig-cap: "Resolution: n=1000"
 #| fig-height: 2.5
+#| fig-alt: "Monte Carlo simulation with n=1000 points showing a close estimate of the Weibull PDF area."
 make_mc_plot(1000)
 ```
 
@@ -191,6 +195,7 @@ make_mc_plot(1000)
 #| label: fig-mc-d
 #| fig-cap: "Resolution: n=10000"
 #| fig-height: 2.5
+#| fig-alt: "Monte Carlo simulation with n=10000 points showing a near-exact estimate of the Weibull PDF area converging to 1.0."
 make_mc_plot(10000)
 ```
 :::
