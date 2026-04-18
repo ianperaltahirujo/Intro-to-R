@@ -17,14 +17,14 @@ colnames(diet_df) <- c("Initial", "Yr1", "Yr2", "Yr3")
 null_df$Subject <- 1:nrow(null_df)
 diet_df$Subject <- 1:nrow(diet_df)
 
-null_long <- null_df %>%
+null_long <- null_df |>
   pivot_longer(
     cols      = c("Initial", "Yr1", "Yr2", "Yr3"),
     names_to  = "Year",
     values_to = "Calcium"
   )
 
-diet_long <- diet_df %>%
+diet_long <- diet_df |>
   pivot_longer(
     cols      = c("Initial", "Yr1", "Yr2", "Yr3"),
     names_to  = "Year",
