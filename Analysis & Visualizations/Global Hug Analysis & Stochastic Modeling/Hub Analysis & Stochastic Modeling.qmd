@@ -2,6 +2,7 @@
 title: "Global Hub Analysis & Stochastic Modeling"
 author: "Ian Eduardo Peralta Hirujo"
 date: "April 13, 2026"
+date-modified: today
 format: 
   pdf:
     toc: true
@@ -15,6 +16,7 @@ execute:
 ```{r}
 #| label: setup-libraries
 #| include: false
+# Following the Tidyverse Style Guide: https://style.tidyverse.org/
 library(tidyverse)
 library(rvest)
 library(gt)
@@ -38,6 +40,7 @@ As shown in Table 1, the data reveals a sharp divide between domestic centered h
 #| results: asis
 
 target_iata <- c("ATL", "FRA", "PKX", "DFW", "DXB", "LHR")
+# Source is publicly accessible — no authentication required
 wiki_url <- 
   "https://en.wikipedia.org/wiki/List_of_busiest_airports_by_passenger_traffic"
 
