@@ -1,0 +1,957 @@
+---
+title: "Electric Vehicle Population Analysis"
+author:
+  - name: Ian Peralta  |  Evan Gill
+    email: iep5058@psu.edu  |  eag5894@psu.edu
+date: today
+date-format: long
+format:
+  pdf:
+    toc: true
+    number-sections: true
+    fig-pos: "H"
+    geometry: margin=1in
+execute:
+  echo: false
+  warning: false
+  message: false
+knitr:
+  opts_chunk:
+    fig.align: "center"
+---
+
+```{r}
+# Style Guide: Tidyverse Style Guide (https://style.tidyverse.org/)
+
+#| label: setup
+#| include: false
+
+# Load required packages
+library(tidyverse)
+library(scales)
+library(knitr)
+
+# ── Data import ──────────────────────────────────────────────────────────────
+# Read raw CSV; show_col_types = FALSE suppresses the column-spec message.
+ev_raw <- read_csv(
+  "Electric_Vehicle_Population_Data.csv",
+  show_col_types = FALSE
+)
+
+# ── Data wrangling ───────────────────────────────────────────────────────────
+# Rename columns to snake_case for consistency, then filter and mutate.
+ev <- ev_raw |>
+  rename(
+    vin               = `VIN (1-10)`,
+    county            = County,
+    city              = City,
+    state             = State,
+    postal_code       = `Postal Code`,
+    model_year        = `Model Year`,
+    make              = Make,
+    model             = Model,
+    ev_type           = `Electric Vehicle Type`,
+    cafv_eligibility  = `Clean Alternative Fuel Vehicle (CAFV) Eligibility`,
+    electric_range    = `Electric Range`,
+    legislative_district = `Legislative District`,
+    dol_vehicle_id    = `DOL Vehicle ID`,
+    vehicle_location  = `Vehicle Location`,
+    electric_utility  = `Electric Utility`,
+    census_tract_2020 = `2020 Census Tract`
+  ) |>
+  # Remove rows missing geographic or range information
+  filter(!is.na(county), !is.na(city), !is.na(electric_range)) |>
+  mutate(
+    # Standardise make and model capitalisation
+    make       = str_to_title(make),
+    model      = str_to_title(model),
+    make_model = str_c(make, model, sep = " "),
+    # Shorten EV-type labels for readability in plots
+    ev_type_short = case_when(
+      str_detect(ev_type, "BEV")  ~ "Battery EV (BEV)",
+      str_detect(ev_type, "PHEV") ~ "Plug-in Hybrid EV (PHEV)",
+      TRUE                        ~ ev_type
+    )
+  )
+
+# ── Dataset-level summary (used inline throughout the report) ─────────────────
+summary_stats <- ev |>
+  summarize(
+    n_records           = n(),
+    n_counties          = n_distinct(county),
+    n_makes             = n_distinct(make),
+    earliest_model_year = min(model_year, na.rm = TRUE),
+    newest_model_year   = max(model_year, na.rm = TRUE),
+    pct_bev             = round(
+      mean(ev_type_short == "Battery EV (BEV)") * 100, 1
+    )
+  )
+```
+
+\newpage
+# Introduction
+
+Washington State has been at the forefront of electric vehicle (EV) adoption
+in the United States, supported by state incentives, a growing charging
+infrastructure, and a population that has broadly embraced clean-energy
+transportation. This report explores the Washington State Department of
+Licensing EV population data to better understand where EVs are registered,
+which makes and models dominate the market, how registrations have grown
+over model years, and what the distribution of reported electric range looks
+like.
+
+The dataset contains `r format(summary_stats$n_records, big.mark = ",")` EV
+registrations spread across `r summary_stats$n_counties` counties, covering
+model years from `r summary_stats$earliest_model_year` to
+`r summary_stats$newest_model_year`. Battery EVs (BEVs) make up
+`r summary_stats$pct_bev`% of all registrations, with Plug-in Hybrid EVs
+(PHEVs) comprising the remainder. All analyses in this report follow an
+Exploratory Data Analysis structure, our goal is to surface
+patterns and generate hypotheses rather than confirm specific pre-stated
+claims. All coding follows the Tidyverse standard throughout, using
+consistent piping with `|>` and `{ggplot2}` for visualization.
+
+# Data
+
+## Provenance
+
+The data used in this report are the *Electric Vehicle Population Data*
+published by the Washington State Department of Licensing (DOL). The dataset
+is made publicly available through the Washington State open-data portal and
+is updated on a regular basis to reflect current vehicle registrations. For
+this analysis, we used the version downloaded from the United States open
+data portal (data.gov).
+
+**Citation:** Washington State Department of Licensing. (2024). *Electric
+Vehicle Population* [Data set]. Washington State Open Data Portal.
+https://data.wa.gov/Transportation/Electric-Vehicle-Population-Data/f6w7-q2d2
+
+## Fair and Care Principles
+
+The dataset satisfies the core **FAIR** principles in the following ways.
+It is findable; the data carry a stable URL and a persistent identifier on
+the Washington State open-data portal. It is accessible, the portal allows
+direct CSV download without requiring authentication. It is interoperable, 
+the file is a plain CSV with column names that map naturally to standard
+transportation and geographic concepts. It is reusable, the DOL provides
+field-level documentation, and the data are released under a public-domain
+licence, meaning researchers may freely build upon them.
+
+Applying the **CARE** principles, which focus on Indigenous data sovereignty,
+requires more nuance. The data describes vehicle registrations, not individuals
+or communities, so direct CARE concerns are less acute than in, say, health
+or census data. Nevertheless, the Collective Benefit principle is relevant:
+the dataset is a public resource that can inform equitable EV-infrastructure
+planning for all Washington communities, including tribal nations whose
+territories fall within the state. The Authority to Control principle
+highlights a challenge: tribal-land registrations are aggregated into standard
+county codes, which obscures any distinct EV-adoption patterns within those
+communities. A fuller implementation of CARE would require the DOL to
+collaborate with tribal governments on how, and at what resolution, their data
+are reported.
+
+## Cases and Attributes
+
+Each case in this dataset is a single registered electric vehicle in
+Washington State at the time of the snapshot. More precisely, a case
+corresponds to one unique vehicle title on record with the DOL, identified by
+a partial Vehicle Identification Number (VIN).
+
+The data collection records the following attributes for each registered
+vehicle. The county, city, state, and postal code of the registered owner
+capture the geographic location of each vehicle. The model year indicates
+the manufacturer's designated production year for the vehicle. The make and
+model fields record the manufacturer name and specific model designation,
+respectively. The electric vehicle type distinguishes between Battery EVs
+, which run exclusively on electric power, and Plug-in Hybrid EVs
+, which combine an electric motor with a combustion engine. The Clean
+Alternative Fuel Vehicle (CAFV) eligibility field records whether the vehicle
+qualifies for Washington State's clean-fuel incentive programs. The electric
+range attribute reports the EPA-estimated all-electric driving range in miles;
+records coded as zero typically indicate that the range has not yet been
+researched by the DOL. Additional administrative attributes, the DOL vehicle
+ID, legislative district, electric utility provider, and 2020 Census tract
+provide context for regulatory and geographic analyses.
+
+# Results
+
+## Geographic Distribution of EV Registrations {#sec-counties}
+
+```{r}
+#| label: fig-top-counties
+#| fig-cap: "Top 10 Washington counties by number of registered EVs. King
+#|   County accounts for the majority of all registrations in the state."
+#| fig-alt: "A horizontal bar chart showing the top 10 Washington counties by
+#|   EV registrations. King County has by far the most with 138,268 registered
+#|   EVs, followed by Snohomish at 35,136 and Pierce at 23,040. The remaining
+#|   seven counties — Clark, Thurston, Kitsap, Spokane, Whatcom, Benton, and
+#|   Skagit — each have fewer than 20,000 registrations, with bars decreasing
+#|   in length from left to right. The x-axis is labelled 'Number of
+#|   registered EVs' and scaled in units of thousands (K). The chart uses a
+#|   minimal theme with horizontal gridlines removed."
+#| out-width: "95%"
+
+# ── Plot 1: Top 10 counties ───────────────────────────────────────────────────
+# Count registrations per county, keep top 10, reorder for ranked display.
+plot_top_counties <- ev |>
+  count(county, sort = TRUE) |>
+  slice_head(n = 10) |>
+  mutate(county = fct_reorder(county, n)) |>
+  ggplot(aes(x = n, y = county)) +
+  geom_col() +
+  geom_text(aes(label = comma(n)), hjust = -0.1, size = 3.5) +
+  scale_x_continuous(
+    labels = label_number(scale_cut = cut_short_scale()),
+    expand = expansion(mult = c(0, 0.12))
+  ) +
+  labs(
+    title = "EV County Concentration",
+    x     = "Number of registered EVs",
+    y     = "County"
+  ) +
+  theme_minimal(base_size = 13) +
+  theme(panel.grid.major.y = element_blank())
+
+plot_top_counties
+```
+
+@fig-top-counties reveals a striking geographic concentration of EV
+registrations across Washington State. King County, which encompasses Seattle
+and its immediate suburbs, dominates with 138,268 registered EVs, nearly four
+times the count of second-place Snohomish County (35,136). Together, King and
+Snohomish counties account for the majority of all registrations in the
+dataset, a pattern that likely reflects the combined effect of higher median
+incomes, greater population density, and more developed charging infrastructure
+in the Puget Sound metro area. Counties further from the Seattle metro, such
+as Benton (4,020) and Skagit (3,343), trail far behind, suggesting that EV
+adoption remains heavily concentrated in urban and suburban western Washington.
+This urban-rural gap may reflect both economic factors and the greater range
+anxiety associated with rural driving patterns, and it hints at where targeted
+infrastructure investment could have the most impact.
+
+\newpage
+## Most Common EV Makes {#sec-makes}
+
+```{r}
+#| label: tbl-top-makes
+#| tbl-cap: "Top 10 EV makes registered in Washington State, ranked by total
+#|   number of registrations."
+
+# ── Summary table: top 10 makes ───────────────────────────────────────────────
+# Compute counts, then format numbers with commas for the rendered table.
+ev |>
+  count(make, sort = TRUE) |>
+  slice_head(n = 10) |>
+  mutate(
+    Rank = row_number(),
+    `Number of Registered EVs` = format(n, big.mark = ",")
+  ) |>
+  select(Rank, Make = make, `Number of Registered EVs`) |>
+  kable(align = c("c", "l", "r"))
+```
+
+```{r}
+#| label: fig-top-makes
+#| fig-cap: "Top 10 EV manufacturers by number of registered vehicles in
+#|   Washington State. Tesla leads by a wide margin."
+#| fig-alt: "A horizontal bar chart showing the top 10 EV manufacturers by
+#|   Washington State registrations. Tesla has the longest bar at 114,808
+#|   vehicles, more than five times larger than second-place Chevrolet at
+#|   19,410. The remaining eight makes — Nissan, Ford, Kia, Toyota, BMW,
+#|   Hyundai, Rivian, and Volkswagen — each have between roughly 7,500 and
+#|   16,200 registrations, with bars decreasing in length going down the chart.
+#|   The x-axis is labelled 'Number of registered EVs' and is scaled in
+#|   thousands (K). The chart uses a minimal theme with horizontal gridlines
+#|   removed."
+#| out-width: "95%"
+
+# ── Plot 2: Top 10 makes ──────────────────────────────────────────────────────
+# Count by make, keep top 10, reorder for ranked bar display.
+plot_top_makes <- ev |>
+  count(make, sort = TRUE) |>
+  slice_head(n = 10) |>
+  mutate(make = fct_reorder(make, n)) |>
+  ggplot(aes(x = n, y = make)) +
+  geom_col() +
+  geom_text(aes(label = comma(n)), hjust = -0.1, size = 3.5) +
+  scale_x_continuous(
+    labels = label_number(scale_cut = cut_short_scale()),
+    expand = expansion(mult = c(0, 0.12))
+  ) +
+  labs(
+    title = "Tesla Dominates EV Registrations by Make",
+    x     = "Number of registered EVs",
+    y     = "Make"
+  ) +
+  theme_minimal(base_size = 13) +
+  theme(panel.grid.major.y = element_blank())
+
+plot_top_makes
+```
+
+@tbl-top-makes and @fig-top-makes together show the remarkable degree to which
+Tesla dominates EV registrations in Washington State. With 114,808 registered
+vehicles, Tesla accounts for nearly half of all EVs in the dataset, a margin
+that far exceeds the combined totals of Chevrolet (19,410), Nissan (16,153),
+and Ford (15,422), the next three manufacturers on the list. The gap between
+Tesla and every other make is not just large; it is qualitatively different in
+scale. One plausible explanation is Tesla's early market entry and its
+deliberate focus on building a dedicated charging network, which reduced the
+range anxiety that has historically limited EV adoption. The presence of Rivian
+(8,950), a relatively young EV-only startup, alongside legacy automakers
+like Toyota and BMW suggests that the market is beginning to diversify, even if
+Tesla's lead remains substantial.
+
+## EV Registrations by Model Year and Type {#sec-modelyear}
+
+```{r}
+#| label: fig-model-year
+#| fig-cap: "Number of registered EVs by model year (2011–2027), split by EV
+#|   type. BEV registrations surge after 2020 and peak around model year 2023,
+#|   while PHEV registrations grow more slowly."
+#| fig-alt: "A line chart with points showing registered EV counts by model
+#|   year from 2011 to 2027, with two lines: a salmon-pink line for Battery EVs
+#|   (BEV) and a teal line for Plug-in Hybrid EVs (PHEV). Both lines are low
+#|   and roughly parallel through 2019. Starting around 2020 the BEV line rises
+#|   sharply, peaking near 50,000 registrations around model year 2023 before
+#|   falling steeply toward 2027. The PHEV line increases more gradually,
+#|   reaching a smaller peak around 10,000 near model year 2024 before also
+#|   declining. The x-axis shows model year and the y-axis shows number of
+#|   registered EVs scaled in thousands (K). A legend at the top distinguishes
+#|   the two EV types by both colour and point shape."
+#| out-width: "95%"
+
+# ── Plot 3: Registrations by model year and EV type ───────────────────────────
+# Filter to a meaningful model-year window; count by year and type.
+plot_model_year_type <- ev |>
+  filter(model_year >= 2011, model_year <= 2027) |>
+  count(model_year, ev_type_short) |>
+  ggplot(aes(
+    x     = model_year,
+    y     = n,
+    color = ev_type_short,
+    shape = ev_type_short
+  )) +
+  geom_line(linewidth = 1.1) +
+  geom_point(size = 2) +
+  scale_y_continuous(
+    labels = label_number(scale_cut = cut_short_scale())
+  ) +
+  labs(
+    title = "BEV registrations surge after 2020",
+    x     = "Model year",
+    y     = "Number of registered EVs",
+    color = "EV type",
+    shape = "EV type"
+  ) +
+  theme_minimal(base_size = 13) +
+  theme(legend.position = "top")
+
+plot_model_year_type
+```
+
+@fig-model-year shows how EV registrations have evolved across model years
+and between the two drivetrain types. Both BEV and PHEV registrations remained
+modest and roughly parallel through 2019, then the BEV line diverges sharply
+upward, consistent with Tesla's rapid production expansion and the broader
+industry shift toward fully electric platforms. The BEV line peaks near model
+year 2023 and then drops steeply, which most likely reflects a data-collection
+artefact: newer model years are simply underrepresented because vehicles take
+time to be titled and recorded after purchase, so the apparent decline toward
+2026–2027 should not be interpreted as falling EV sales. PHEVs follow a
+similar but much flatter trajectory, suggesting that while the plug-in hybrid
+segment is growing, it has not kept pace with the surge in fully electric
+vehicles. The divergence between the two lines after 2020 is one of the
+clearest signals in the data that Washington drivers have been moving decisively
+toward full electrification.
+
+## Most Common EV Models {#sec-models}
+
+```{r}
+#| label: fig-top-models
+#| fig-cap: "Top 10 make-and-model combinations by number of registrations.
+#|   Tesla models occupy four of the top six spots."
+#| fig-alt: "A horizontal bar chart showing the top 10 EV make-and-model
+#|   combinations by Washington State registrations. Tesla Model Y has the
+#|   longest bar at 60,356 vehicles, followed by Tesla Model 3 at 37,835. Third
+#|   place goes to Nissan Leaf at 13,499, followed by Tesla Model S at 7,734
+#|   and Chevrolet Bolt EV at 7,701. The remaining five models — Tesla Model X,
+#|   Ford Mustang Mach-E, Hyundai Ioniq 5, Volkswagen ID.4, and Rivian R1S —
+#|   each have between roughly 5,000 and 7,000 registrations. The x-axis is
+#|   labelled 'Number of registered EVs' and is scaled in thousands (K). The
+#|   chart uses a minimal theme with horizontal gridlines removed."
+#| out-width: "95%"
+
+# ── Plot 4: Top 10 make-model combinations ────────────────────────────────────
+# Combine make and model into a single label; count and reorder.
+plot_top_models <- ev |>
+  count(make_model, sort = TRUE) |>
+  slice_head(n = 10) |>
+  mutate(make_model = fct_reorder(make_model, n)) |>
+  ggplot(aes(x = n, y = make_model)) +
+  geom_col() +
+  geom_text(aes(label = comma(n)), hjust = -0.1, size = 3.5) +
+  scale_x_continuous(
+    labels = label_number(scale_cut = cut_short_scale()),
+    expand = expansion(mult = c(0, 0.12))
+  ) +
+  labs(
+    title = "Top Models are Mostly BEVs",
+    x     = "Number of registered EVs",
+    y     = "Make and model"
+  ) +
+  theme_minimal(base_size = 13) +
+  theme(panel.grid.major.y = element_blank())
+
+plot_top_models
+```
+
+@fig-top-models reinforces the manufacturer-level picture from @sec-makes,
+now at model resolution. The Tesla Model Y (60,356) and Tesla Model 3 (37,835)
+together account for nearly half of all registrations in the dataset, an
+extraordinary concentration in just two models. The Nissan Leaf (13,499)
+occupies a distant third place, reflecting its status as one of the earliest
+mass-market EVs available in the United States. Notably, four of the top six
+spots belong to Tesla, confirming that the brand's dominance is not spread
+across many niche models but is driven by two high-volume, mainstream
+offerings. The presence of the Ford Mustang Mach-E, Hyundai Ioniq 5, and
+Volkswagen ID.4 in the lower portion of the chart suggests that non-Tesla BEV
+alternatives are gaining traction, even if they have not yet approached
+Tesla's volumes.
+
+## Distribution of Electric Range {#sec-range}
+
+```{r}
+#| label: fig-range
+#| fig-cap: "Distribution of reported electric range (miles) among Washington
+#|   State EVs with a recorded range greater than zero. The dashed vertical line
+#|   marks the median range. Two clusters are visible: a lower cluster centred
+#|   near 20–40 miles (typical of PHEVs) and an upper cluster near 200–260
+#|   miles (typical of BEVs)."
+#| fig-alt: "A histogram showing the distribution of electric range in miles
+#|   for Washington State EVs with range greater than zero. The x-axis is
+#|   labelled 'Electric range, miles' and spans from 0 to just above 300. The
+#|   y-axis is labelled 'Number of registered EVs' and is scaled in thousands.
+#|   A vertical dashed line marks the median. The distribution is clearly
+#|   bimodal: the tallest bars appear in the 20-to-40-mile range with counts
+#|   near 13,000 to 18,000, representing short-range plug-in hybrids; a second
+#|   cluster appears between roughly 200 and 270 miles with counts up to about
+#|   10,000, representing long-range battery EVs. The gap between the two
+#|   clusters, from roughly 120 to 190 miles, contains very few vehicles."
+#| out-width: "95%"
+
+# ── Plot 5: Electric range histogram ─────────────────────────────────────────
+# Exclude range == 0 (coded as unknown by DOL); add median reference line.
+plot_range <- ev |>
+  filter(electric_range > 0) |>
+  ggplot(aes(x = electric_range)) +
+  geom_histogram(binwidth = 10, color = "white") +
+  geom_vline(
+    aes(xintercept = median(electric_range)),
+    linetype  = "dashed",
+    linewidth = 1
+  ) +
+  scale_y_continuous(
+    labels = label_number(scale_cut = cut_short_scale())
+  ) +
+  labs(
+    title    = "Electric Range is Bimodal Overall",
+    subtitle = "Records with range = 0 (unknown) excluded",
+    x        = "Electric range, miles",
+    y        = "Number of registered EVs"
+  ) +
+  theme_minimal(base_size = 13)
+
+plot_range
+```
+
+@fig-range reveals a distinctly bimodal distribution of electric range across
+the Washington EV population. A first cluster of vehicles is concentrated in the
+20-to-40-mile range, these are almost certainly PHEVs, whose all-electric mode
+is designed for short urban trips rather than long-distance travel. A second,
+broader cluster appears between roughly 200 and 260 miles, representing the
+mainstream BEV segment where most modern Tesla and non-Tesla fully electric
+vehicles fall. The gap between the two clusters, roughly 120 to 190 miles,
+contains very few vehicles, suggesting that manufacturers have largely
+converged on two distinct design philosophies rather than building vehicles
+that split the difference. The dashed line marking the median sits in the
+lower-range cluster, which reflects the large number of PHEV registrations
+pulling the central tendency downward. A natural follow-up question would be
+whether this bimodal structure has shifted over time as BEV ranges have
+improved.
+
+## Make Distribution Across Top Counties {#sec-heatmap}
+
+```{r}
+#| label: fig-heatmap
+#| fig-cap: "Heatmap of EV registrations for the top 6 makes across the top 6
+#|   Washington counties. Cell colour encodes EV count; exact counts are
+#|   printed within each cell."
+#| fig-alt: "A tile heatmap with county on the y-axis (King, Snohomish,
+#|   Pierce, Clark, Thurston, Kitsap from top to bottom) and EV make on the
+#|   x-axis (Tesla, Chevrolet, Nissan, Ford, Kia, Toyota from left to right).
+#|   Cell fill ranges from dark navy (low counts) to light blue (high counts).
+#|   The Tesla-King County cell is the brightest, showing 59.872K vehicles and
+#|   stands out sharply from all other cells. All other cells are dark,
+#|   indicating much lower counts. Snohomish-Tesla shows 16.717K, Pierce-Tesla
+#|   shows 8.941K. Counts for non-Tesla makes across all counties are generally
+#|   below 8K. A legend on the right maps fill colour to EV count in units of
+#|   thousands (K)."
+#| out-width: "95%"
+
+# ── Plot 6: County × make heatmap ─────────────────────────────────────────────
+# Identify the top 6 counties and top 6 makes independently, then cross-tabulate.
+top_county_names <- ev |>
+  count(county, sort = TRUE) |>
+  slice_head(n = 6) |>
+  pull(county)
+
+top_make_names <- ev |>
+  count(make, sort = TRUE) |>
+  slice_head(n = 6) |>
+  pull(make)
+
+plot_county_make_heatmap <- ev |>
+  filter(county %in% top_county_names, make %in% top_make_names) |>
+  count(county, make) |>
+  mutate(
+    county = factor(county, levels = rev(top_county_names)),
+    make   = factor(make,   levels = top_make_names)
+  ) |>
+  ggplot(aes(x = make, y = county, fill = n)) +
+  geom_tile(color = "white") +
+  geom_text(
+    aes(label = label_number(scale_cut = cut_short_scale())(n)),
+    size = 3.2
+  ) +
+  scale_fill_continuous(
+    labels = label_number(scale_cut = cut_short_scale())
+  ) +
+  labs(
+    title = "Teslas Concentrated in King County",
+    x     = "Make",
+    y     = "County",
+    fill  = "EV count"
+  ) +
+  theme_minimal(base_size = 13) +
+  theme(panel.grid = element_blank())
+
+plot_county_make_heatmap
+```
+
+@fig-heatmap brings together the geographic and manufacturer threads from
+earlier sections. The most immediate feature is the Tesla-King County cell,
+which at nearly 60,000 vehicles is so much larger than every other cell that
+it dominates the color scale, leaving the rest of the heatmap in uniformly
+dark shades. This visual asymmetry highlights how extreme the concentration
+of Tesla registrations in King County is relative to the rest of the matrix.
+Snohomish County's Tesla cell (16.7K) is the second brightest, consistent with
+its large overall registration count seen in @fig-top-counties. For non-Tesla
+makes, counts are far more uniform across counties, Chevrolet, Nissan, Ford,
+Kia, and Toyota each show counts in the hundreds to low thousands across all
+six counties, without the sharp drop-off that characterizes Tesla. This pattern
+suggests that while Tesla's dominance is geographically concentrated in the
+Seattle metro, competing makes have a somewhat more even geographic footprint.
+
+\newpage
+# Conclusion
+
+Taken together, these six visualizations paint a consistent picture of EV
+adoption in Washington State. Registrations are geographically concentrated in
+the Puget Sound metro area, particularly King County. Tesla has an unmatched
+presence at both the manufacturer and model level, driven primarily by the
+Model Y and Model 3. The population has grown rapidly in recent model years, with
+BEVs outpacing PHEVs by an increasing margin since 2020. And the bimodal
+electric-range distribution reflects the coexistence of two
+different vehicle philosophies, short-range hybrids and long-range pure
+electrics, within the same registered group. Future analyses could examine
+whether the geographic and brand concentration observed here is narrowing over
+time as EV options expand and charging infrastructure reaches more rural parts
+of the state.
+
+\newpage
+
+# GenAI Usage Appendix {.unnumbered}
+
+This appendix discloses all use of generative AI tools in the development of
+this report, in accordance with course policy and Open Science principles.
+
+**Tool used:** Anthropic Claude (Sonnet 4.6)
+
+**Date of use:** April 2025
+
+**Purpose:** Generating alt text and long descriptions for all six figures
+in this report (@fig-top-counties, @fig-top-makes, @fig-model-year,
+@fig-top-models, @fig-range, @fig-heatmap).
+
+**Prompts used (one per figure, representative example shown for
+@fig-top-counties):**
+
+*Prompt:* "Write alt text and a long description for
+the following bar chart. The chart shows
+the top 10 Washington counties by number of registered EVs. Be specific about
+visual features, axis labels, and notable patterns."
+
+**Response (Claude, used as basis for alt text in @fig-top-counties):**
+Claude returned a description noting King County's dominant bar at 138,268
+vehicles, the four-times gap between King and Snohomish, the decreasing bar
+lengths for the remaining counties, and the K-scaled x-axis labelled
+"Number of registered EVs." We edited this response for length and integrated
+it into the `fig-alt` chunk option for each figure. The same prompt structure
+was applied to each of the remaining five figures, with the specific chart
+image provided each time.
+
+## Author Contributions {.unnumbered}
+
+Evan Gill:
+- Identified and sourced the dataset used in the analysis
+- Developed visualizations for geographic distribution (top counties), model year trends, and electric range distribution
+- Contributed to project polishing, final review, and overall presentation quality
+- Wrote and refined portions of the Results section related to these analyses
+- Created and maintained the project README file
+
+Ian Peralta:
+- Cleaned and prepared the dataset for analysis, including variable renaming and filtering
+- Developed visualizations for EV makes, top models, and county-by-make heatmap
+- Wrote the Introduction, Data, and portions of the Results sections in the Quarto report
+- Structured and organized the QMD file and overall report layout
+
+Both Authors:
+- Collaborated on exploratory data analysis and interpretation of results
+- Reviewed each other’s code and contributions
+- Contributed to final conclusions and overall project direction
+
+
+\newpage
+# Code Appendix {.unnumbered}
+
+## `00_ev_data_prep.R` {.unnumbered}
+
+```{r}
+#| label: appendix-data-prep
+#| echo: true
+#| eval: false
+#| code-fold: false
+
+# ── Libraries ─────────────────────────────────────────────────────────────────
+library(tidyverse)
+library(scales)
+
+# ── Data import ───────────────────────────────────────────────────────────────
+# Read raw CSV; show_col_types = FALSE suppresses the column-spec message.
+ev_raw <- read_csv(
+  "Electric_Vehicle_Population_Data.csv",
+  show_col_types = FALSE
+)
+
+# ── Data wrangling ────────────────────────────────────────────────────────────
+# Rename columns to snake_case for consistency, then filter and mutate.
+ev <- ev_raw |>
+  rename(
+    vin               = `VIN (1-10)`,
+    county            = County,
+    city              = City,
+    state             = State,
+    postal_code       = `Postal Code`,
+    model_year        = `Model Year`,
+    make              = Make,
+    model             = Model,
+    ev_type           = `Electric Vehicle Type`,
+    cafv_eligibility  = `Clean Alternative Fuel Vehicle (CAFV) Eligibility`,
+    electric_range    = `Electric Range`,
+    legislative_district = `Legislative District`,
+    dol_vehicle_id    = `DOL Vehicle ID`,
+    vehicle_location  = `Vehicle Location`,
+    electric_utility  = `Electric Utility`,
+    census_tract_2020 = `2020 Census Tract`
+  ) |>
+  # Remove rows missing geographic or range information
+  filter(!is.na(county), !is.na(city), !is.na(electric_range)) |>
+  mutate(
+    # Standardise make and model capitalisation
+    make       = str_to_title(make),
+    model      = str_to_title(model),
+    make_model = str_c(make, model, sep = " "),
+    # Shorten EV-type labels for readability in plots
+    ev_type_short = case_when(
+      str_detect(ev_type, "BEV")  ~ "Battery EV (BEV)",
+      str_detect(ev_type, "PHEV") ~ "Plug-in Hybrid EV (PHEV)",
+      TRUE                        ~ ev_type
+    )
+  )
+
+# ── Dataset-level summary ─────────────────────────────────────────────────────
+summary_stats <- ev |>
+  summarize(
+    n_records           = n(),
+    n_counties          = n_distinct(county),
+    n_makes             = n_distinct(make),
+    earliest_model_year = min(model_year, na.rm = TRUE),
+    newest_model_year   = max(model_year, na.rm = TRUE),
+    pct_bev             = round(
+      mean(ev_type_short == "Battery EV (BEV)") * 100, 1
+    )
+  )
+```
+
+\newpage
+
+## `01_top_counties.R` {.unnumbered}
+
+```{r}
+#| label: appendix-top-counties
+#| echo: true
+#| eval: false
+#| code-fold: false
+
+# ── Plot 1: Top 10 counties ───────────────────────────────────────────────────
+# Count registrations per county, keep top 10, reorder for ranked display.
+plot_top_counties <- ev |>
+  count(county, sort = TRUE) |>
+  slice_head(n = 10) |>
+  mutate(county = fct_reorder(county, n)) |>
+  ggplot(aes(x = n, y = county)) +
+  geom_col() +
+  geom_text(aes(label = comma(n)), hjust = -0.1, size = 3.5) +
+  scale_x_continuous(
+    labels = label_number(scale_cut = cut_short_scale()),
+    expand = expansion(mult = c(0, 0.12))
+  ) +
+  labs(
+    title = "EV registrations concentrate in a few counties",
+    x     = "Number of registered EVs",
+    y     = "County"
+  ) +
+  theme_minimal(base_size = 13) +
+  theme(panel.grid.major.y = element_blank())
+
+ggsave(
+  "figures/01_top_counties.png",
+  plot_top_counties,
+  width  = 9,
+  height = 5.4,
+  dpi    = 300
+)
+```
+
+\newpage
+
+## `02_top_makes.R` {.unnumbered}
+
+```{r}
+#| label: appendix-top-makes
+#| echo: true
+#| eval: false
+#| code-fold: false
+
+# ── Plot 2: Top 10 makes ──────────────────────────────────────────────────────
+# Count by make, keep top 10, reorder for ranked bar display.
+plot_top_makes <- ev |>
+  count(make, sort = TRUE) |>
+  slice_head(n = 10) |>
+  mutate(make = fct_reorder(make, n)) |>
+  ggplot(aes(x = n, y = make)) +
+  geom_col() +
+  geom_text(aes(label = comma(n)), hjust = -0.1, size = 3.5) +
+  scale_x_continuous(
+    labels = label_number(scale_cut = cut_short_scale()),
+    expand = expansion(mult = c(0, 0.12))
+  ) +
+  labs(
+    title = "Tesla dominates EV registrations by make",
+    x     = "Number of registered EVs",
+    y     = "Make"
+  ) +
+  theme_minimal(base_size = 13) +
+  theme(panel.grid.major.y = element_blank())
+
+ggsave(
+  "figures/02_top_makes.png",
+  plot_top_makes,
+  width  = 9,
+  height = 5.4,
+  dpi    = 300
+)
+```
+
+\newpage
+
+## `03_model_year_by_type.R` {.unnumbered}
+
+```{r}
+#| label: appendix-model-year
+#| echo: true
+#| eval: false
+#| code-fold: false
+
+# ── Plot 3: Registrations by model year and EV type ───────────────────────────
+# Filter to a meaningful model-year window; count by year and type.
+plot_model_year_type <- ev |>
+  filter(model_year >= 2011, model_year <= 2027) |>
+  count(model_year, ev_type_short) |>
+  ggplot(aes(
+    x     = model_year,
+    y     = n,
+    color = ev_type_short,
+    shape = ev_type_short
+  )) +
+  geom_line(linewidth = 1.1) +
+  geom_point(size = 2) +
+  scale_y_continuous(
+    labels = label_number(scale_cut = cut_short_scale())
+  ) +
+  labs(
+    title = "BEV registrations surge after 2020",
+    x     = "Model year",
+    y     = "Number of registered EVs",
+    color = "EV type",
+    shape = "EV type"
+  ) +
+  theme_minimal(base_size = 13) +
+  theme(legend.position = "top")
+
+ggsave(
+  "figures/03_model_year_by_type.png",
+  plot_model_year_type,
+  width  = 9,
+  height = 5.4,
+  dpi    = 300
+)
+```
+
+\newpage
+
+## `04_top_models.R` {.unnumbered}
+
+```{r}
+#| label: appendix-top-models
+#| echo: true
+#| eval: false
+#| code-fold: false
+
+# ── Plot 4: Top 10 make-model combinations ────────────────────────────────────
+# Combine make and model into a single label; count and reorder.
+plot_top_models <- ev |>
+  count(make_model, sort = TRUE) |>
+  slice_head(n = 10) |>
+  mutate(make_model = fct_reorder(make_model, n)) |>
+  ggplot(aes(x = n, y = make_model)) +
+  geom_col() +
+  geom_text(aes(label = comma(n)), hjust = -0.1, size = 3.5) +
+  scale_x_continuous(
+    labels = label_number(scale_cut = cut_short_scale()),
+    expand = expansion(mult = c(0, 0.12))
+  ) +
+  labs(
+    title = "Top models are mostly BEVs",
+    x     = "Number of registered EVs",
+    y     = "Make and model"
+  ) +
+  theme_minimal(base_size = 13) +
+  theme(panel.grid.major.y = element_blank())
+
+ggsave(
+  "figures/04_top_models.png",
+  plot_top_models,
+  width  = 9,
+  height = 5.4,
+  dpi    = 300
+)
+```
+
+\newpage
+
+## `05_range_histogram.R` {.unnumbered}
+
+```{r}
+#| label: appendix-range
+#| echo: true
+#| eval: false
+#| code-fold: false
+
+# ── Plot 5: Electric range histogram ─────────────────────────────────────────
+# Exclude range == 0 (coded as unknown by DOL); add median reference line.
+plot_range <- ev |>
+  filter(electric_range > 0) |>
+  ggplot(aes(x = electric_range)) +
+  geom_histogram(binwidth = 10, color = "white") +
+  geom_vline(
+    aes(xintercept = median(electric_range)),
+    linetype  = "dashed",
+    linewidth = 1
+  ) +
+  scale_y_continuous(
+    labels = label_number(scale_cut = cut_short_scale())
+  ) +
+  labs(
+    title    = "Electric range is bimodal across the fleet",
+    subtitle = "Records with range = 0 (unknown) excluded",
+    x        = "Electric range, miles",
+    y        = "Number of registered EVs"
+  ) +
+  theme_minimal(base_size = 13)
+
+ggsave(
+  "figures/05_range_histogram.png",
+  plot_range,
+  width  = 9,
+  height = 5.4,
+  dpi    = 300
+)
+```
+
+\newpage
+
+## `06_county_make_heatmap.R` {.unnumbered}
+
+```{r}
+#| label: appendix-heatmap
+#| echo: true
+#| eval: false
+#| code-fold: false
+
+# ── Plot 6: County x make heatmap ─────────────────────────────────────────────
+# Identify top 6 counties and top 6 makes independently, then cross-tabulate.
+top_county_names <- ev |>
+  count(county, sort = TRUE) |>
+  slice_head(n = 6) |>
+  pull(county)
+
+top_make_names <- ev |>
+  count(make, sort = TRUE) |>
+  slice_head(n = 6) |>
+  pull(make)
+
+plot_county_make_heatmap <- ev |>
+  filter(county %in% top_county_names, make %in% top_make_names) |>
+  count(county, make) |>
+  mutate(
+    county = factor(county, levels = rev(top_county_names)),
+    make   = factor(make,   levels = top_make_names)
+  ) |>
+  ggplot(aes(x = make, y = county, fill = n)) +
+  geom_tile(color = "white") +
+  geom_text(
+    aes(label = label_number(scale_cut = cut_short_scale())(n)),
+    size = 3.2
+  ) +
+  scale_fill_continuous(
+    labels = label_number(scale_cut = cut_short_scale())
+  ) +
+  labs(
+    title = "Tesla's dominance is concentrated in King County",
+    x     = "Make",
+    y     = "County",
+    fill  = "EV count"
+  ) +
+  theme_minimal(base_size = 13) +
+  theme(panel.grid = element_blank())
+
+ggsave(
+  "figures/06_county_make_heatmap.png",
+  plot_county_make_heatmap,
+  width  = 9,
+  height = 5.4,
+  dpi    = 300
+)
+```
