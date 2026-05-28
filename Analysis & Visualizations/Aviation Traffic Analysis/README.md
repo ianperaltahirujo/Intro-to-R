@@ -10,7 +10,7 @@ A data pipeline and visualization project analyzing the post-pandemic passenger 
  
 ---
  
-## 🗂️ Repo Organization
+## Repo Organization
  
 ```
 Aviation Traffic Analysis/
@@ -61,7 +61,7 @@ library(gt)
  
 ---
  
-## 🔍 Key Finding
+## Key Finding
  
 ATL maintained dominant traffic volume throughout the recovery period, reflecting the resilience of domestic-heavy hubs. International-heavy airports like DXB and LHR showed sharper 2020–2021 declines but accelerated recovery by 2023, illustrating a clear **"two-speed" recovery pattern** driven by the pace of international travel reopening.
  
