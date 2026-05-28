@@ -22,13 +22,12 @@ using a longitudinal calcium dataset as a case study.
 - Expand the GenAI prompting section with further comparisons
 
 ## Repo Organization
-**Intro-to-R/
-
-└── Analysis & Visualizations/
-└── Global Hug Analysis & Stochastic Modeling/
+**Intro-to-R
+└── Analysis & Visualizations
+└── Global Hug Analysis & Stochastic Modeling
 ├── Hub Analysis & Stochastic Modeling.qmd   
 ├── Hub-Analysis---Stochastic-Modeling.pdf   
-└── Analyzing Calcium/
-├── AnalyzingCalcium.R                  
+└── Analyzing Calcium
+|              ├── AnalyzingCalcium.R                  
 ├── calcium.csv                      
-└── images/  
+└── images  
