@@ -22,7 +22,6 @@ using a longitudinal calcium dataset as a case study.
 - Expand the GenAI prompting section with further comparisons
 
 ## Repo Organization
-**Intro-to-R
 ```
 Intro-to-R/
 └── Analysis & Visualizations/
