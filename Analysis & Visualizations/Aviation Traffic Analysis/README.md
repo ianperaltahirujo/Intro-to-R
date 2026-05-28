@@ -1,8 +1,6 @@
 # Aviation Traffic Analysis
  
-A data pipeline and visualization project analyzing the post-pandemic passenger traffic recovery of six major global airport hubs between 2020 and 2025.
- 
-Data is scraped directly from Wikipedia, tidied, and visualized to surface diverging recovery patterns across domestic-heavy and international-heavy airports.
+A data pipeline and visualization project analyzing the post-pandemic passenger traffic recovery of six major global airport hubs between 2020 and 2025. Data is scraped directly from Wikipedia, tidied, and visualized to surface diverging recovery patterns across domestic-heavy and international-heavy airports.
  
 ---
  
