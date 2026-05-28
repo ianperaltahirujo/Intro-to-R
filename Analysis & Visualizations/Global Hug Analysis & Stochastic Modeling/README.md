@@ -24,8 +24,11 @@ using a longitudinal calcium dataset as a case study.
 ## Repo Organization
 **Intro-to-R/
 └── Analysis & Visualizations/
+
 └── Global Hug Analysis & Stochastic Modeling/
+
 ├── Hub Analysis & Stochastic Modeling.qmd   
+
 ├── Hub-Analysis---Stochastic-Modeling.pdf   
 └── Analyzing Calcium/
 ├── AnalyzingCalcium.R                  
