@@ -25,14 +25,9 @@ using a longitudinal calcium dataset as a case study.
 **Intro-to-R/
 └── Analysis & Visualizations/
 └── Global Hug Analysis & Stochastic Modeling/
-├── Hub Analysis & Stochastic Modeling.qmd   # Main Quarto source file
-├── Hub-Analysis---Stochastic-Modeling.pdf   # Rendered PDF output
+├── Hub Analysis & Stochastic Modeling.qmd   
+├── Hub-Analysis---Stochastic-Modeling.pdf   
 └── Analyzing Calcium/
-├── AnalyzingCalcium.R                   # R script for calcium analysis
-├── calcium.csv                          # Raw data file
-└── images/                              # Plots used in the report**
-
-## Contact
-**Ian Peralta**  
-[GitHub Profile](https://github.com/ianperaltahirujo)
-[Email](iep5058@psu.edu)
+├── AnalyzingCalcium.R                  
+├── calcium.csv                      
+└── images/  
