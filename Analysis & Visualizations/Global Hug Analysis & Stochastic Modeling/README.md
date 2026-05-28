@@ -23,6 +23,7 @@ using a longitudinal calcium dataset as a case study.
 
 ## Repo Organization
 **Intro-to-R
+```
 Intro-to-R/
 └── Analysis & Visualizations/
     ├── Global Hub Analysis & Stochastic Modeling/
@@ -32,3 +33,4 @@ Intro-to-R/
         ├── AnalyzingCalcium.R
         ├── calcium.csv
         └── images/
+```
